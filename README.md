@@ -8,7 +8,72 @@ This repo is the **platform side** — the modules a platform admin applies once
 
 ---
 
-## What you get
+## Design principles
+
+1. **Audience first: non-developers using Claude.** Single commands beat config files. Opinionated beats generic. The friction we accept is the friction the human can't help feeling — we don't make trade-offs for "future flexibility" they'll never use.
+
+2. **Bounded scope.** Five capabilities: Postgres, S3, DynamoDB, SES, Bedrock. Anything else (Redis, SQS, Step Functions, RDS, …) needs a platform-admin discussion. Keeps Claude from inventing AWS services and amateurs from pulling in operational complexity they can't reason about.
+
+3. **Auth at the edge, naive in code.** Chain of trust: Cloudflare Access → CloudFront WAF → OAC SigV4 → Lambda IAM. App code reads `Cf-Access-Authenticated-User-Email` and trusts it. No JWT validation, no auth library, no signup flow.
+
+4. **Email is the user identity.** No user table, no UUIDs. The Cloudflare-vended email goes directly into `owner_email TEXT` columns. Stable across sessions; query scoping uses it; audit trail uses it.
+
+5. **Same code in dev and prod.** Every helper has a transparent local fallback (postgres → docker-compose, S3 → `./uploads`, DynamoDB → SQLite, SES → stderr). No `if PROD:` branches in app code. "Works on a fresh clone + `docker compose up`" is the bar before "works deployed."
+
+6. **One profile per developer, no console access required.** `aws configure --profile quickship` and you're done. No SSO permission sets, no role-assuming, no MFA QR scanning. We trade strict security depth for onboardable usability and compensate with per-app permission scoping + access-key rotation.
+
+7. **Capabilities default off; Claude enables them.** Bootstrap asks two questions (app name, allowed users). The newbie typing it doesn't know whether they need DynamoDB. Claude turns capabilities on as it learns what the app does — by editing `terraform.tfvars` and running `/deploy`.
+
+8. **SSM is the cross-repo glue.** Bootstrap publishes platform facts (WAF ARN, Neon project, pipeline bucket, this repo's URL, …) to SSM. Per-app Terraform data-reads them. Apps don't thread outputs through module calls; new repos have nothing to configure.
+
+9. **No secrets in Terraform state where avoidable.** IAM access keys are minted by `aws iam create-access-key` post-apply, not by `aws_iam_access_key`. SSM secret values are populated out-of-band; TF `lifecycle.ignore_changes = [value]` keeps them stable across applies.
+
+10. **Zero drift after the first deploy.** Terraform owns the Lambda's function shell; the CodeBuild pipeline owns its code (`ignore_source_code_hash = true`). After bootstrap, `git push` is the only deploy verb — `terraform apply` only when infra actually changes.
+
+---
+
+## Security model & limitations
+
+Quickship optimises for **safe-enough internal tools built by amateurs**, not enterprise-grade compliance. The defaults are reasonable; the gaps are real. Read this section before deciding whether to put anything sensitive on it.
+
+### What you get
+
+- **Edge auth that can't be bypassed.** Cloudflare Access (Email PIN) → CloudFront WAF (origin-secret check) → OAC SigV4-signed Lambda URL. Direct hits to any layer's URL return 403; the chain is end-to-end tamper-evident.
+- **Per-app IAM scoping.** Each app's Lambda execution role is policy-scoped to that app's S3 bucket, DynamoDB tables, SSM secret namespace, etc. Per-developer access likewise scoped to the apps they're listed on — no account-wide grants.
+- **TLS, DMARC `p=reject`, DKIM, SPF.** Anti-impersonation by default.
+
+### Reasonable isolation between apps — not iron-clad
+
+Apps share a single AWS account. Boundaries are enforced by IAM policies (per-resource ARNs and tags), not by account separation. They also share a single Neon Postgres project — each app gets its own database, but per-database isolation is at the SQL level, not the cluster level. The module defaults are correct; the platform doesn't *prevent* an app's TF from punching holes via custom inline policies.
+
+### Deliberate trade-offs vs. enterprise
+
+- **Long-lived static IAM access keys for developers.** No SSO permission sets, no AssumeRole, no MFA — chosen so non-developer users can be onboarded without console access. Compensated by per-app scoping and `gitleaks` pre-commit; mitigation is rotation, not prevention.
+- **Cleartext secrets in Lambda env config.** Anyone with `lambda:GetFunctionConfiguration` on the app reads `DATABASE_URL`, your API keys, etc. (Same risk profile as the SSM-vended secrets the platform supports.)
+- **TF state holds generated secrets.** Encrypted in S3, but anyone with S3 + KMS read on the state bucket has them.
+- **Single region, no multi-region failover.** Region outage = platform outage.
+- **No application-level audit logging, no compliance certifications, no third-party security audit.**
+
+### Use this for
+
+- Internal tools, admin dashboards, ops pages.
+- Rapid prototyping by a solo developer or small team.
+- Apps where the worst-case breach is "embarrassing", not "company-killing".
+
+### Don't use this for
+
+- Anything subject to HIPAA, PCI-DSS, GDPR Article 9 (special-category data), or similar regulatory regimes.
+- Multi-tenant SaaS where customer A's data must be account-isolated from customer B's.
+- Customer-facing high-traffic production where one breach is existential.
+- Payment processing, identity providers, healthcare records.
+
+### Migration path when you outgrow it
+
+The platform is designed to be torn down per-app cleanly. When an app graduates, the well-trodden upgrade path is: IAM Identity Center + permission sets + AssumeRole + MFA for developers, multi-account architecture (one AWS account per app or environment), SOC 2-grade logging (CloudTrail org trails, GuardDuty, Macie). None of that needs to be done up front.
+
+---
+
+## Architecture
 
 ```
                           ┌─────────────────────────┐
