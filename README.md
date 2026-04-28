@@ -136,9 +136,9 @@ module "platform_bootstrap" {
   git_connection_providers = ["GitHub"]   # or ["GitLab"]
 }
 
-module "ketil" {
+module "alice" {
   source = "git::https://github.com/stadskle/quickship-app-platform.git//modules/developer?ref=main"
-  name   = "ketil"
+  name   = "alice"
 }
 ```
 
