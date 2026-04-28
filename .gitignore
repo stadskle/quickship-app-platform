@@ -1,0 +1,20 @@
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+.idea/
+.vscode/
+.DS_Store
+
+# Claude Code per-machine local config (not for sharing)
+.claude/settings.local.json
