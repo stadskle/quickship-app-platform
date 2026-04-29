@@ -1,6 +1,7 @@
 variable "name_prefix" {
   type        = string
-  description = "Prefix for platform-level resources (e.g. \"quickship\", \"acme-platform\"). Lowercase, alphanumeric and hyphens; 3-32 chars."
+  description = "Prefix baked into resource names (S3 bucket suffixes, IAM names, SSM paths, etc.). Lowercase, alphanumeric and hyphens; 3-32 chars. **Cannot be changed after first apply** — the tfstate S3 bucket name embeds it, so renaming requires manual state migration. Pick deliberately and stick with it."
+  default     = "quickship"
 
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,30}[a-z0-9]$", var.name_prefix))
