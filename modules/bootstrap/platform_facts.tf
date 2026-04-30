@@ -36,6 +36,40 @@ resource "aws_ssm_parameter" "fact_platform_source" {
   tags        = local.common_tags
 }
 
+# Orchestrator handles. App template's /deploy + /destroy slash commands
+# read these to invoke the right project + tail the right log group.
+resource "aws_ssm_parameter" "fact_orchestrator_project" {
+  name        = "${local.facts_root}/orchestrator_project"
+  description = "CodeBuild project name for the orchestrator. /deploy + /destroy invoke this via aws codebuild start-build."
+  type        = "String"
+  value       = aws_codebuild_project.orchestrator.name
+  tags        = local.common_tags
+}
+
+resource "aws_ssm_parameter" "fact_orchestrator_arn" {
+  name        = "${local.facts_root}/orchestrator_arn"
+  description = "Orchestrator CodeBuild project ARN. Developer module grants codebuild:StartBuild on this."
+  type        = "String"
+  value       = aws_codebuild_project.orchestrator.arn
+  tags        = local.common_tags
+}
+
+resource "aws_ssm_parameter" "fact_orchestrator_input_bucket" {
+  name        = "${local.facts_root}/orchestrator_input_bucket"
+  description = "S3 bucket where /deploy uploads the build payload (zip of the app dir) before invoking the orchestrator."
+  type        = "String"
+  value       = aws_s3_bucket.orchestrator_input.bucket
+  tags        = local.common_tags
+}
+
+resource "aws_ssm_parameter" "fact_orchestrator_log_group" {
+  name        = "${local.facts_root}/orchestrator_log_group"
+  description = "CloudWatch log group for orchestrator builds. Devs tail this to watch /deploy progress."
+  type        = "String"
+  value       = aws_cloudwatch_log_group.orchestrator.name
+  tags        = local.common_tags
+}
+
 resource "aws_ssm_parameter" "fact_bedrock_model_arns" {
   name        = "${local.facts_root}/bedrock_model_arns"
   description = "Comma-separated Bedrock foundation-model ARNs that apps with `ai_models_enabled = true` may invoke."

@@ -45,25 +45,25 @@ resource "aws_iam_user" "dev" {
   tags = local.tags
 }
 
-# Always-on read on the platform's SSM namespace. Developers need this for:
-#   - bootstrap.sh in the app template (reads /<prefix>/_platform/source)
-#   - `terraform apply` on per-app infra (Cloudflare + Neon providers
-#     read their API tokens from /<prefix>/cloudflare/* and /<prefix>/neon/*;
-#     the per-app module data-reads /<prefix>/_platform/* facts)
+# Always-on read on the platform's PUBLIC fact namespace only. Developers
+# need this for:
+#   - bootstrap.sh in the app template (reads /<prefix>/_platform/source,
+#     /_platform/orchestrator_project, /_platform/app_owners/<name>)
+#   - /deploy invoking the orchestrator (reads orchestrator handles)
 #
-# Trade-off: a leaked developer access key reads the platform's Cloudflare
-# API token and Neon API key. With those, an attacker can manipulate the
-# platform's Cloudflare zone and Neon project — meaningful blast radius.
-# Mitigations: rotation, gitleaks pre-commit, single-tenant trust model.
-# If the platform grows past solo-dev / small-team, replace this with a
-# narrower scoping or a dedicated platform-deployer role.
+# Notably NOT granted: /<prefix>/cloudflare/*, /<prefix>/neon/* (platform
+# secrets — only the orchestrator needs these for terraform-provider auth).
+# The developer never runs terraform apply locally, so no need.
+#
+# Per-app secrets at /<prefix>/apps/<app>/* are granted separately by each
+# quickship module (developer_access.tf), scoped to the apps the dev is on.
 resource "aws_iam_user_policy" "platform_read" {
   name = "platform-read"
   user = aws_iam_user.dev.name
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "ReadPlatformSSM"
+      Sid    = "ReadPlatformFacts"
       Effect = "Allow"
       Action = [
         "ssm:GetParameter",
@@ -71,7 +71,75 @@ resource "aws_iam_user_policy" "platform_read" {
         "ssm:GetParametersByPath",
         "ssm:DescribeParameters",
       ]
-      Resource = "arn:aws:ssm:*:*:parameter/${var.name_prefix}/*"
+      Resource = "arn:aws:ssm:*:*:parameter/${var.name_prefix}/_platform/*"
     }]
+  })
+}
+
+# Orchestrator-invoke permissions. Developers don't have terraform-apply
+# perms directly; instead they upload their app's working tree as a zip
+# and call the orchestrator's CodeBuild project, which has admin-ish perms
+# and runs the apply on their behalf.
+data "aws_ssm_parameter" "orchestrator_arn" {
+  name = "/${var.name_prefix}/_platform/orchestrator_arn"
+}
+
+data "aws_ssm_parameter" "orchestrator_input_bucket" {
+  name = "/${var.name_prefix}/_platform/orchestrator_input_bucket"
+}
+
+data "aws_ssm_parameter" "orchestrator_log_group" {
+  name = "/${var.name_prefix}/_platform/orchestrator_log_group"
+}
+
+resource "aws_iam_user_policy" "orchestrator_invoke" {
+  name = "orchestrator-invoke"
+  user = aws_iam_user.dev.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "UploadBuildPayload"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:AbortMultipartUpload",
+        ]
+        Resource = "arn:aws:s3:::${data.aws_ssm_parameter.orchestrator_input_bucket.value}/*"
+      },
+      {
+        Sid    = "ListInputBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+        ]
+        Resource = "arn:aws:s3:::${data.aws_ssm_parameter.orchestrator_input_bucket.value}"
+      },
+      {
+        Sid    = "InvokeOrchestrator"
+        Effect = "Allow"
+        Action = [
+          "codebuild:StartBuild",
+          "codebuild:BatchGetBuilds",
+          "codebuild:BatchGetProjects",
+        ]
+        Resource = data.aws_ssm_parameter.orchestrator_arn.value
+      },
+      {
+        Sid    = "ReadOrchestratorLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogStreams",
+          "logs:GetLogEvents",
+          "logs:FilterLogEvents",
+          "logs:StartLiveTail",
+          "logs:StopLiveTail",
+        ]
+        Resource = [
+          "arn:aws:logs:*:*:log-group:${data.aws_ssm_parameter.orchestrator_log_group.value}",
+          "arn:aws:logs:*:*:log-group:${data.aws_ssm_parameter.orchestrator_log_group.value}:*",
+        ]
+      },
+    ]
   })
 }
