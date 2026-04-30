@@ -92,3 +92,28 @@ output "ses_sender_identity_arn" {
   description = "SES sender identity ARN. Per-app modules grant ses:SendEmail on this ARN when `email_enabled = true`. null when bootstrap email is disabled."
   value       = var.email_enabled ? aws_sesv2_email_identity.platform[0].arn : null
 }
+
+# Orchestrator handles. Pass these to the `developer` module so it can grant
+# invoke permissions to each developer's IAM user. Wiring as outputs (instead
+# of having the developer module read SSM directly) creates an explicit graph
+# dependency so the developer module's plan/apply can't run before bootstrap
+# has created the orchestrator.
+output "orchestrator_arn" {
+  description = "ARN of the orchestrator CodeBuild project. Pass to the developer module."
+  value       = aws_codebuild_project.orchestrator.arn
+}
+
+output "orchestrator_project_name" {
+  description = "Name of the orchestrator CodeBuild project."
+  value       = aws_codebuild_project.orchestrator.name
+}
+
+output "orchestrator_input_bucket" {
+  description = "S3 bucket where /deploy uploads build payloads."
+  value       = aws_s3_bucket.orchestrator_input.bucket
+}
+
+output "orchestrator_log_group" {
+  description = "CloudWatch log group for orchestrator builds."
+  value       = aws_cloudwatch_log_group.orchestrator.name
+}

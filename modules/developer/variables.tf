@@ -19,3 +19,21 @@ variable "tags" {
   description = "Extra tags applied to the IAM user."
   default     = {}
 }
+
+# Orchestrator handles — pass module.<bootstrap>.orchestrator_*.
+# These create an explicit graph dependency on the bootstrap module so this
+# module's plan can't run before the orchestrator exists.
+variable "orchestrator_arn" {
+  type        = string
+  description = "ARN of the orchestrator CodeBuild project. Pass `module.<bootstrap>.orchestrator_arn`."
+}
+
+variable "orchestrator_input_bucket" {
+  type        = string
+  description = "Name of the orchestrator's S3 input bucket. Pass `module.<bootstrap>.orchestrator_input_bucket`."
+}
+
+variable "orchestrator_log_group" {
+  type        = string
+  description = "Name of the orchestrator's CloudWatch log group. Pass `module.<bootstrap>.orchestrator_log_group`."
+}

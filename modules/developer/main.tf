@@ -79,19 +79,9 @@ resource "aws_iam_user_policy" "platform_read" {
 # Orchestrator-invoke permissions. Developers don't have terraform-apply
 # perms directly; instead they upload their app's working tree as a zip
 # and call the orchestrator's CodeBuild project, which has admin-ish perms
-# and runs the apply on their behalf.
-data "aws_ssm_parameter" "orchestrator_arn" {
-  name = "/${var.name_prefix}/_platform/orchestrator_arn"
-}
-
-data "aws_ssm_parameter" "orchestrator_input_bucket" {
-  name = "/${var.name_prefix}/_platform/orchestrator_input_bucket"
-}
-
-data "aws_ssm_parameter" "orchestrator_log_group" {
-  name = "/${var.name_prefix}/_platform/orchestrator_log_group"
-}
-
+# and runs the apply on their behalf. Handles come in as inputs (rather
+# than read from SSM) so the consumer wires the bootstrap → developer
+# dependency explicitly via the TF graph.
 resource "aws_iam_user_policy" "orchestrator_invoke" {
   name = "orchestrator-invoke"
   user = aws_iam_user.dev.name
@@ -105,7 +95,7 @@ resource "aws_iam_user_policy" "orchestrator_invoke" {
           "s3:PutObject",
           "s3:AbortMultipartUpload",
         ]
-        Resource = "arn:aws:s3:::${data.aws_ssm_parameter.orchestrator_input_bucket.value}/*"
+        Resource = "arn:aws:s3:::${var.orchestrator_input_bucket}/*"
       },
       {
         Sid    = "ListInputBucket"
@@ -113,7 +103,7 @@ resource "aws_iam_user_policy" "orchestrator_invoke" {
         Action = [
           "s3:ListBucket",
         ]
-        Resource = "arn:aws:s3:::${data.aws_ssm_parameter.orchestrator_input_bucket.value}"
+        Resource = "arn:aws:s3:::${var.orchestrator_input_bucket}"
       },
       {
         Sid    = "InvokeOrchestrator"
@@ -123,7 +113,7 @@ resource "aws_iam_user_policy" "orchestrator_invoke" {
           "codebuild:BatchGetBuilds",
           "codebuild:BatchGetProjects",
         ]
-        Resource = data.aws_ssm_parameter.orchestrator_arn.value
+        Resource = var.orchestrator_arn
       },
       {
         Sid    = "ReadOrchestratorLogs"
@@ -136,8 +126,8 @@ resource "aws_iam_user_policy" "orchestrator_invoke" {
           "logs:StopLiveTail",
         ]
         Resource = [
-          "arn:aws:logs:*:*:log-group:${data.aws_ssm_parameter.orchestrator_log_group.value}",
-          "arn:aws:logs:*:*:log-group:${data.aws_ssm_parameter.orchestrator_log_group.value}:*",
+          "arn:aws:logs:*:*:log-group:${var.orchestrator_log_group}",
+          "arn:aws:logs:*:*:log-group:${var.orchestrator_log_group}:*",
         ]
       },
     ]
