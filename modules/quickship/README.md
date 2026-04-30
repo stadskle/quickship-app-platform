@@ -132,6 +132,16 @@ Plus consumer-level provider `default_tags` and the module's `tags` input.
 
 ---
 
+## Localdev twins for S3 and DynamoDB
+
+For every per-app S3 bucket (`storage_enabled = true`) and DynamoDB table (`dynamodb_tables = [...]`), the module also provisions a `-localdev` twin tagged `quickship:env = localdev`. Empty DynamoDB tables and S3 buckets cost $0, so the duplicate is free.
+
+The twins exist to give `docker compose up` a real AWS endpoint to talk to (via the developer's AWS profile) instead of the host-disk fallback in `kv.py` / `storage.py`. Real DynamoDB semantics (TTL, conditional writes, batch ops), real S3 (presigned URLs, multipart uploads) — without a localstack container or risk of polluting prod data.
+
+The Lambda execution role's IAM only references the **prod** ARNs — production code can't reach localdev. The developer's tag-based access policy covers both because both carry the dev-tag entries from `local.tags`.
+
+The app template's `docker-compose.yml` (configured by `bootstrap.sh`) sets `KV_TABLE_<NAME>` and `STORAGE_BUCKET` env vars pointing at the `-localdev` twins, so the helpers automatically use them.
+
 ## Database (when `database_enabled = true`)
 
 - A Postgres role and database — both named `<app_name>` — are created inside the platform-shared Neon project. The role **owns** its database — full DDL/DML inside it.

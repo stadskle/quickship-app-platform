@@ -79,6 +79,48 @@ resource "aws_iam_role_policy" "storage" {
   })
 }
 
+# ---------- S3 storage: localdev twin ---------------------------------------
+#
+# Empty S3 buckets cost $0; provisioning a per-app `-localdev` twin gives
+# `docker compose up` a real S3 to talk to (via the dev's AWS profile)
+# instead of the host-disk fallback in storage.py. Real semantics, no
+# prod-data risk, no localstack container.
+#
+# The Lambda execution role's IAM grant above only references the prod
+# bucket — production code can never accidentally touch localdev. The
+# developer's tag-based access policy covers BOTH because both buckets
+# carry the same `quickship:dev:<name>` tags via local.tags.
+
+resource "aws_s3_bucket" "storage_localdev" {
+  count = var.storage_enabled ? 1 : 0
+
+  bucket = "${local.resource_name}-storage-${data.aws_caller_identity.current.account_id}-localdev"
+  tags = merge(local.tags, {
+    "quickship:env" = "localdev"
+  })
+}
+
+resource "aws_s3_bucket_public_access_block" "storage_localdev" {
+  count = var.storage_enabled ? 1 : 0
+
+  bucket                  = aws_s3_bucket.storage_localdev[0].id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "storage_localdev" {
+  count = var.storage_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.storage_localdev[0].id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
 # ---------- DynamoDB tables -------------------------------------------------
 
 resource "aws_dynamodb_table" "kv" {
@@ -102,6 +144,30 @@ resource "aws_dynamodb_table" "kv" {
   }
 
   tags = local.tags
+}
+
+# DynamoDB localdev twin. Same shape; PAY_PER_REQUEST means empty tables
+# cost $0. docker-compose's backend env points at these via `KV_TABLE_*`.
+resource "aws_dynamodb_table" "kv_localdev" {
+  for_each = toset(var.dynamodb_tables)
+
+  name         = "${local.resource_name}-${each.key}-localdev"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "key"
+
+  attribute {
+    name = "key"
+    type = "S"
+  }
+
+  ttl {
+    enabled        = true
+    attribute_name = "ttl"
+  }
+
+  tags = merge(local.tags, {
+    "quickship:env" = "localdev"
+  })
 }
 
 resource "aws_iam_role_policy" "dynamodb" {
