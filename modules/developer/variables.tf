@@ -37,3 +37,9 @@ variable "orchestrator_log_group" {
   type        = string
   description = "Name of the orchestrator's CloudWatch log group. Pass `module.<bootstrap>.orchestrator_log_group`."
 }
+
+variable "bedrock_model_arns" {
+  type        = list(string)
+  description = "Bedrock foundation-model ARNs the developer can invoke (for local-dev AI helpers). Pass `module.<bootstrap>.bedrock_model_arns`. Bedrock model ARNs are AWS-managed and untaggable — granted directly rather than via the tag-based per-app scoping."
+  default     = []
+}

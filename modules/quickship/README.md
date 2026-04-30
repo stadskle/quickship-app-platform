@@ -214,40 +214,40 @@ Other failure modes:
 
 ## Developer access (when `developers` is non-empty)
 
-Pairs with the `developer` module. For each name in `developers`, this module attaches a managed policy `<resource_name>-developer-access` to the IAM user `<name_prefix>-developer-<name>` (created elsewhere by `module "developer"`). If the user doesn't exist, apply fails with `NoSuchEntity` — onboard the developer first.
+For each name in `developers`, this module emits one **resource tag** — `quickship:dev:<name> = "1"` — onto every per-app resource (Lambda, S3, DynamoDB, log groups, CodeBuild, CodePipeline, IAM, SSM secrets). The companion `developer` module attaches a single managed policy to each developer's IAM user, with conditions that match the resource tag against the user's `quickship-username` principal tag:
 
-### What the developer can do, granted by app
+```
+aws:ResourceTag/quickship:dev:${aws:PrincipalTag/quickship-username} = "1"
+```
 
-Always (independent of capabilities):
+Net effect: when developer Alice is in your `developers` list, all of this app's resources get tagged `quickship:dev:alice = "1"`, and her single managed policy lets her debug any resource where that tag matches. **Per-app managed policies are no longer attached to user** — the entire access model is tag-driven.
 
-| Service | Permission | Purpose |
-|---|---|---|
-| Lambda | `GetFunction*`, `InvokeFunction` | Inspect config, invoke with test events. NOT `UpdateFunctionCode` — pipeline owns deploys. |
-| CloudWatch Logs | full read/tail on Lambda + CodeBuild log groups | `aws logs tail`, log searches. |
-| CloudWatch Logs Insights | query (account-wide; queries are bound to chosen log group at runtime) | Structured log search. |
-| CodeBuild | start/retry/inspect | Trigger or rerun builds, fetch failure logs. |
-| CodePipeline | get state, start execution | Watch deploys, kick off retries. |
+### What the developer can do (when listed)
 
-Capability-mirrored (only when the corresponding capability is on; lets `AWS_PROFILE=<prefix> docker compose up` exercise real AWS):
-
-| Capability | Permission |
+| Capability | Tag-scoped grant |
 |---|---|
-| `storage_enabled` | S3 RW on this app's bucket |
-| `dynamodb_tables` | DynamoDB RW on this app's tables |
-| `ai_models_enabled` | Bedrock InvokeModel on platform models |
-| `secret_names` non-empty | SSM Get/Put on this app's secrets path (Put so devs can populate values per the secret workflow) |
+| Lambda | `GetFunction*`, `InvokeFunction` (NOT `UpdateFunctionCode` — pipeline owns deploys) |
+| CloudWatch Logs | full read/tail on the app's log groups |
+| CloudWatch Logs Insights | query (account-wide; tag conditions don't apply to `StartQuery`'s log-group selection — accept the read-grant) |
+| CodeBuild | start/retry/inspect builds for this app |
+| CodePipeline | get state, start execution for this app |
+| S3 | RW on the app's bucket (when `storage_enabled = true`) |
+| DynamoDB | RW on the app's tables |
+| SSM secrets | Get + Put on the app's secrets path |
+
+Bedrock `InvokeModel` is granted unconditionally to all developers (model ARNs are AWS-managed, untaggable). Minor over-grant — devs not on AI-enabled apps can still invoke. Mitigation: budget alerts in bootstrap.
 
 Deliberately NOT granted: `ses:SendEmail` (local helper falls back to stderr; keep accidental real emails out of dev).
 
-### Smoothness contract
+### Adding / removing developers
 
-Adding an existing developer to a new app: append the name to that app's `developers` and apply. The new managed policy is attached to their user. No new credentials, no profile changes.
+- **Add to a new app**: append name to `developers`, run `/configure`. The module re-tags resources with their dev marker. No new managed policy attached anywhere.
+- **Remove**: drop the name, `/configure`. Tags removed; their access fails the policy condition immediately.
+- **Instant revocation across all apps**: rotate (or delete) the developer's access key — see the `developer` module README.
 
-Removing access: drop the name from `developers` and apply. The attachment is removed; subsequent API calls fail authorization. For instant revocation including all current/future calls, rotate (or delete) the developer's access key — see the `developer` module README.
+### Scaling
 
-### IAM cap awareness
-
-AWS limits a user to **10 attached managed policies** by default (raisable to 20 via service quota). For a developer on N apps, that's the limit. For a solo platform with a handful of apps, plenty.
+The IAM 10-managed-policies-per-user cap is **no longer a constraint** — each developer has one managed policy regardless of app count. The new ceiling is **AWS resource-tag limits: 50 tags per resource** (so up to 50 developers per app, comfortable for any solo or small-team scenario).
 
 ---
 

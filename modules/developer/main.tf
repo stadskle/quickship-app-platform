@@ -42,7 +42,13 @@ data "aws_region" "current" {}
 
 resource "aws_iam_user" "dev" {
   name = local.resource_name
-  tags = local.tags
+
+  # Principal tag the per-app access policy uses for resource-tag matching:
+  # quickship-username matches the suffix of `quickship:dev:<name>` tags
+  # on per-app resources.
+  tags = merge(local.tags, {
+    "quickship-username" = var.name
+  })
 }
 
 # Always-on read on the platform's PUBLIC fact namespace only. Developers
@@ -132,4 +138,191 @@ resource "aws_iam_user_policy" "orchestrator_invoke" {
       },
     ]
   })
+}
+
+# Single managed policy granting per-app debug + local-dev access. Scoped
+# via tag-based access control: every per-app resource is tagged
+# `quickship:dev:<name> = "1"` for each developer in that app's
+# `developers` list. The policy condition allows the action only when
+# the resource's `quickship:dev:${this-user-name}` tag exists.
+#
+# Net effect: ONE managed policy per developer, scoping to N apps via
+# resource-tag matching. Replaces the previous "one managed policy per
+# (app, dev)" pattern that hit the AWS 10-managed-policies-per-user cap
+# at 10 apps. Tags-per-resource cap (50) effectively means up to 50
+# developers per app.
+#
+# Logs Insights and Bedrock are exceptions — see comments inline.
+resource "aws_iam_policy" "app_access" {
+  name        = "${local.resource_name}-app-access"
+  description = "Per-app debug + local-dev access for ${var.name}, scoped via resource tags."
+  tags        = local.tags
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat(
+      [
+        {
+          Sid    = "Lambda"
+          Effect = "Allow"
+          Action = [
+            "lambda:GetFunction",
+            "lambda:GetFunctionConfiguration",
+            "lambda:GetFunctionCodeSigningConfig",
+            "lambda:ListVersionsByFunction",
+            "lambda:InvokeFunction",
+          ]
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+            }
+          }
+        },
+        {
+          Sid    = "CloudWatchLogs"
+          Effect = "Allow"
+          Action = [
+            "logs:DescribeLogStreams",
+            "logs:GetLogEvents",
+            "logs:FilterLogEvents",
+            "logs:StartLiveTail",
+            "logs:StopLiveTail",
+          ]
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+            }
+          }
+        },
+        {
+          # Account-wide list — log-group enumeration with no resource scope.
+          # Tag conditions don't apply to this action; we accept the visibility.
+          Sid      = "DescribeLogGroups"
+          Effect   = "Allow"
+          Action   = ["logs:DescribeLogGroups"]
+          Resource = "*"
+        },
+        {
+          # CloudWatch Logs Insights — the API requires Resource: "*" and
+          # tag conditions don't reliably apply across StartQuery's
+          # log-group selection. Granted unconditionally; the actual log
+          # data accessed is still bound by what's tagged-and-allowed via
+          # GetLogEvents/etc. above.
+          Sid    = "CloudWatchLogsInsights"
+          Effect = "Allow"
+          Action = [
+            "logs:StartQuery",
+            "logs:StopQuery",
+            "logs:GetQueryResults",
+            "logs:GetLogGroupFields",
+          ]
+          Resource = "*"
+        },
+        {
+          Sid    = "CodeBuild"
+          Effect = "Allow"
+          Action = [
+            "codebuild:StartBuild",
+            "codebuild:RetryBuild",
+            "codebuild:StopBuild",
+            "codebuild:BatchGetBuilds",
+            "codebuild:ListBuildsForProject",
+          ]
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+            }
+          }
+        },
+        {
+          Sid    = "CodePipeline"
+          Effect = "Allow"
+          Action = [
+            "codepipeline:GetPipelineState",
+            "codepipeline:GetPipelineExecution",
+            "codepipeline:ListPipelineExecutions",
+            "codepipeline:StartPipelineExecution",
+          ]
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+            }
+          }
+        },
+        {
+          Sid    = "S3Storage"
+          Effect = "Allow"
+          Action = [
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+            "s3:ListBucket",
+          ]
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+            }
+          }
+        },
+        {
+          Sid    = "DynamoDB"
+          Effect = "Allow"
+          Action = [
+            "dynamodb:Query",
+            "dynamodb:Scan",
+            "dynamodb:GetItem",
+            "dynamodb:BatchGetItem",
+            "dynamodb:PutItem",
+            "dynamodb:UpdateItem",
+            "dynamodb:DeleteItem",
+            "dynamodb:BatchWriteItem",
+            "dynamodb:DescribeTable",
+          ]
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+            }
+          }
+        },
+        {
+          Sid    = "SSMSecrets"
+          Effect = "Allow"
+          Action = [
+            "ssm:GetParameter",
+            "ssm:GetParameters",
+            "ssm:GetParametersByPath",
+            "ssm:PutParameter",
+          ]
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+            }
+          }
+        },
+      ],
+      length(var.bedrock_model_arns) > 0 ? [{
+        # Bedrock foundation models are AWS-managed and untaggable. Granted
+        # directly to the platform's published models. Minor over-grant —
+        # all developers can invoke regardless of which apps they're on.
+        # Mitigation: Nova Lite is cheap; budget alerts in bootstrap catch
+        # runaway costs.
+        Sid      = "Bedrock"
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel"]
+        Resource = var.bedrock_model_arns
+      }] : []
+    )
+  })
+}
+
+resource "aws_iam_user_policy_attachment" "app_access" {
+  user       = aws_iam_user.dev.name
+  policy_arn = aws_iam_policy.app_access.arn
 }

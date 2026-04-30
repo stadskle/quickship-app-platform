@@ -9,6 +9,15 @@ locals {
   email_principals  = [for p in var.allowed_principals : p if !startswith(p, "*@")]
   domain_principals = [for p in var.allowed_principals : trimprefix(p, "*@") if startswith(p, "*@")]
 
+  # Per-developer tags. The developer module's IAM user is tagged with
+  # `quickship-username = <name>`; this app's resources get one
+  # `quickship:dev:<name> = "1"` tag per developer in `var.developers`.
+  # The dev's single managed policy grants per-app access via the
+  # condition `aws:ResourceTag/quickship:dev:${aws:PrincipalTag/quickship-username} = 1`,
+  # so adding/removing a dev from this list is the only thing needed
+  # — no per-app managed policy proliferation, no IAM 10-policy cap.
+  developer_tags = { for d in var.developers : "quickship:dev:${d}" => "1" }
+
   tags = merge(
     {
       "tinyapp:name"     = var.app_name
@@ -16,6 +25,7 @@ locals {
       "tinyapp:managed"  = "true"
       "tinyapp:scope"    = "app"
     },
+    local.developer_tags,
     var.tags,
   )
 }

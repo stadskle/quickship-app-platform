@@ -6,10 +6,12 @@ Provisions one developer's IAM identity for the quickship platform: a single IAM
 
 | Concern | Approach |
 |---|---|
-| IAM user creation | ✅ Terraform |
+| IAM user creation | ✅ Terraform. User tagged with `quickship-username = <name>` for principal-tag matching in the access policy. |
 | Access keys | ❌ NOT in Terraform — admin runs `aws iam create-access-key` after apply, captures from CLI output. Keeps secrets out of TF state. |
 | MFA | ❌ Not used. The target audience (non-developer users of Claude-built apps) doesn't have AWS console access, so MFA-device QR-scan setup isn't viable. |
-| Permissions | ❌ Not in this module. Each `quickship` module call lists `developers = [...]` and attaches a per-app managed policy to the named user. |
+| Per-app permissions | ✅ ONE managed policy per developer, scoped via tag-based access control. The policy condition `aws:ResourceTag/quickship:dev:${aws:PrincipalTag/quickship-username} = "1"` matches per-app resources tagged by their respective `quickship` modules. Adding a developer to a new app means tagging that app's resources, not attaching a new policy — so the AWS 10-managed-policies-per-user cap doesn't apply. |
+| Platform read | ✅ Inline policy granting `ssm:GetParameter*` on `/<prefix>/_platform/*` (platform facts, orchestrator handles, app_owners registry). Does not include cloudflare/neon credentials — those are consumed by the orchestrator, not the dev. |
+| Orchestrator invoke | ✅ Inline policy granting `s3:PutObject` on the orchestrator input bucket + `codebuild:StartBuild` on the orchestrator project + log-read on its log group. This is how `/configure` (TF apply) and `/destroy` happen — the dev never has terraform-apply perms directly. |
 
 The trade-off (vs. a stricter AssumeRole-with-MFA design): leaked access keys grant full per-app access until rotated. Mitigations:
 
@@ -28,12 +30,16 @@ In the consuming Terraform repo (the platform admin's `infrastructure-as-code` r
 ```hcl
 module "alice" {
   source = "git::https://<host>/<owner>/ai-apps-platform.git//modules/developer?ref=<tag>"
-  name   = "alice"
-}
 
-module "bob" {
-  source = "git::https://<host>/<owner>/ai-apps-platform.git//modules/developer?ref=<tag>"
-  name   = "bob"
+  name = "alice"
+
+  # Required wiring from bootstrap. These create the explicit graph
+  # dependency so bootstrap's orchestrator+SSM facts exist before this
+  # module's policies reference them.
+  orchestrator_arn          = module.<bootstrap>.orchestrator_arn
+  orchestrator_input_bucket = module.<bootstrap>.orchestrator_input_bucket
+  orchestrator_log_group    = module.<bootstrap>.orchestrator_log_group
+  bedrock_model_arns        = module.<bootstrap>.bedrock_model_arns
 }
 ```
 
