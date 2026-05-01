@@ -254,7 +254,7 @@ locals {
       install:
         commands:
           - echo "Installing Terraform..."
-          - curl -sSLo /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.10.5/terraform_1.10.5_linux_arm64.zip
+          - curl -sSLo /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.15.0/terraform_1.15.0_linux_arm64.zip
           - unzip -q /tmp/terraform.zip -d /usr/local/bin/
           - terraform --version
           - echo "MODE=$${MODE:-apply}"

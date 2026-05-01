@@ -114,12 +114,12 @@ variable "pipeline_enabled" {
 
 variable "git_repo" {
   type        = string
-  description = "GitHub repo holding this app's source, in `owner/repo` form (e.g. `alice/hello-world`). NOT the full URL — paste only the path part. The repo must already exist on GitHub. The platform's CodeConnection must be authorized for this owner (organisation or user account); otherwise the pipeline source action fails with `Repository not found`."
+  description = "Repo holding this app's source, in `owner/repo` form (GitHub) or `owner/group/.../repo` form (GitLab nested groups). NOT the full URL — paste only the path part. The repo must already exist. The platform's CodeConnection must be authorized for the top-level owner; otherwise the pipeline source action fails with `Repository not found`."
   default     = null
 
   validation {
-    condition     = var.git_repo == null || can(regex("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", var.git_repo))
-    error_message = "git_repo must be 'owner/repo' (e.g., 'alice/hello-world'). Not a URL, not just the repo name."
+    condition     = var.git_repo == null || can(regex("^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$", var.git_repo))
+    error_message = "git_repo must be 'owner/repo' (GitHub) or 'owner/group/.../repo' (GitLab nested groups). Not a URL, not just the repo name."
   }
 
   validation {
