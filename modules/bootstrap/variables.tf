@@ -75,7 +75,7 @@ variable "neon_pg_version" {
 
 variable "bedrock_models" {
   type        = list(string)
-  description = "Bedrock foundation-model IDs that per-app IAM roles can invoke when `ai_models_enabled = true`. Models must be available in the consumer's AWS region. Default `amazon.nova-lite-v1:0` is one of the few models available in eu-central-1 (no Anthropic models are yet in Frankfurt)."
+  description = "Bedrock foundation-model IDs (without the regional inference-profile prefix). The bootstrap derives both the foundation-model ARN and the regional inference-profile ARN per region (e.g. eu-central-1 invocations target `eu.amazon.nova-lite-v1:0`); IAM grants InvokeModel on both, since AWS Bedrock requires regional inference profiles for on-demand invocation. Models must be available in the consumer's AWS region. Default `amazon.nova-lite-v1:0` is one of the few models available in eu-central-1."
   default     = ["amazon.nova-lite-v1:0"]
 }
 

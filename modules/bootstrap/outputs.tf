@@ -79,8 +79,19 @@ output "neon_pooler_host" {
 }
 
 output "bedrock_model_arns" {
-  description = "Bedrock foundation-model ARNs that per-app modules grant InvokeModel permission on when `ai_models_enabled = true`."
-  value       = [for m in var.bedrock_models : "arn:aws:bedrock:${data.aws_region.current.region}::foundation-model/${m}"]
+  description = "Bedrock ARNs to grant InvokeModel on when `ai_models_enabled = true`. Includes BOTH the underlying foundation-model ARN and the regional inference-profile ARN — AWS requires both because invocation actually targets the inference profile (which routes to the foundation model)."
+  value = concat(
+    [for m in var.bedrock_models : "arn:aws:bedrock:${data.aws_region.current.region}::foundation-model/${m}"],
+    local.bedrock_geo_prefix == "" ? [] : [
+      for m in var.bedrock_models :
+      "arn:aws:bedrock:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:inference-profile/${local.bedrock_geo_prefix}.${m}"
+    ],
+  )
+}
+
+output "bedrock_inference_profile_ids" {
+  description = "Regional inference-profile IDs (e.g. `eu.amazon.nova-lite-v1:0`) — what apps actually pass as model_id to Bedrock invoke. Mirrors `bedrock_models` with the regional prefix added."
+  value       = [for m in var.bedrock_models : "${local.bedrock_geo_prefix == "" ? "" : "${local.bedrock_geo_prefix}."}${m}"]
 }
 
 output "ses_sender_domain" {

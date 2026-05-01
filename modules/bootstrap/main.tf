@@ -10,6 +10,21 @@ locals {
     },
     var.tags,
   )
+
+  # AWS Bedrock requires regional inference profile IDs for invocation in
+  # most regions (the bare foundation-model ID returns ValidationException
+  # "Invocation ... with on-demand throughput isn't supported"). Inference
+  # profile IDs follow the pattern "<geo-prefix>.<model-id>", e.g.
+  # "eu.amazon.nova-lite-v1:0" in eu-central-1. Derive the prefix from the
+  # AWS region; "" if we don't know (fall back to bare model ID — caller
+  # gets the underlying validation error which is at least diagnostic).
+  bedrock_geo_prefix = (
+    startswith(data.aws_region.current.region, "eu-") ? "eu" : (
+      startswith(data.aws_region.current.region, "us-") ? "us" : (
+        startswith(data.aws_region.current.region, "ap-") ? "apac" : ""
+      )
+    )
+  )
 }
 
 # ---------------------------------------------------------------------------
