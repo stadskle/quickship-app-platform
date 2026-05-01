@@ -63,6 +63,11 @@ resource "aws_iam_role_policy" "codebuild" {
         Resource = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${local.resource_name}*"
       },
       {
+        # CodePipeline auto-generates paths like <truncated-pipeline-name>/
+        # <artifact-name>/<id> in the artifact bucket — we don't control the
+        # prefix, so the role gets read/write across the whole bucket. The
+        # bucket is platform-shared but CodePipeline keeps app paths separate
+        # by pipeline name.
         Sid    = "ArtifactBucket"
         Effect = "Allow"
         Action = [
@@ -73,7 +78,7 @@ resource "aws_iam_role_policy" "codebuild" {
         ]
         Resource = [
           "arn:aws:s3:::${local.artifact_bucket}",
-          "arn:aws:s3:::${local.artifact_bucket}/${local.artifact_key_prefix}/*",
+          "arn:aws:s3:::${local.artifact_bucket}/*",
         ]
       },
       {
@@ -218,6 +223,8 @@ resource "aws_iam_role_policy" "codepipeline" {
         Resource = local.git_connection_arns[0]
       },
       {
+        # Same reasoning as the codebuild role's ArtifactBucket statement —
+        # CodePipeline owns the path layout, not us.
         Sid    = "ArtifactBucket"
         Effect = "Allow"
         Action = [
@@ -229,7 +236,7 @@ resource "aws_iam_role_policy" "codepipeline" {
         ]
         Resource = [
           "arn:aws:s3:::${local.artifact_bucket}",
-          "arn:aws:s3:::${local.artifact_bucket}/${local.artifact_key_prefix}/*",
+          "arn:aws:s3:::${local.artifact_bucket}/*",
         ]
       },
       {
