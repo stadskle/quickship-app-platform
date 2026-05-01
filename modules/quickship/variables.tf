@@ -22,8 +22,8 @@ variable "memory_mb" {
 
 variable "timeout_seconds" {
   type        = number
-  description = "Lambda function timeout in seconds. Function URLs cap at 900s."
-  default     = 10
+  description = "Lambda function timeout in seconds. Default 25 — generous enough for Bedrock calls, DB cold-start migrations, and a couple of dependent AWS-API hops, while still well below the Function URL hard cap (900s) and CloudFront's idle limit (60s default; raised here via origin_read_timeout if needed). Bump per-app via the consumer module's `timeout_seconds` input when an app legitimately needs longer (long Bedrock prompts, large data export)."
+  default     = 25
 }
 
 variable "runtime" {
