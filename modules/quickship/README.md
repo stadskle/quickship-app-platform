@@ -187,6 +187,10 @@ Rotation skips step 1 — just `put-parameter --overwrite` and re-apply.
 
 The Lambda role's `ssm_secrets` policy already grants read on the wildcard path `/<name_prefix>/apps/<app_name>/*`, so adding a secret never requires an IAM change. The wildcard is intentional: tightening to per-name ARNs adds friction with no real security gain since the namespace is the app's own.
 
+### Auto-added secret: `anthropic_api_key`
+
+When `ai_models_enabled = true`, the module appends `anthropic_api_key` to the effective secret list automatically. Apps that turn on AI thus get an SSM placeholder for the Anthropic API key without a separate `secret_names` round-trip — they can use `app.lib.ai_claude` directly after populating the value once. If the operator already lists `anthropic_api_key` in `secret_names`, dedup keeps `for_each` happy.
+
 **Trade-off**: secrets land in the Lambda env config in cleartext (`lambda:GetFunctionConfiguration` can read them) and in TF state. Same risk profile as `DATABASE_URL`. If you need bank-grade secret handling, this module isn't the right vehicle.
 
 ---

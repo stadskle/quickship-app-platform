@@ -26,10 +26,24 @@
 
 locals {
   secret_path_prefix = "/${var.name_prefix}/apps/${var.app_name}"
+
+  # Effective secrets = user-declared + auto-added when ai_models_enabled.
+  # Auto-add `anthropic_api_key` so apps that turn on AI can use the
+  # Anthropic API directly (via app/lib/ai_claude.py) without a manual
+  # extra round of `secret_names = [...]` + `terraform apply`. The
+  # placeholder is "REPLACE_ME" until the operator sets the real value
+  # via `aws ssm put-parameter` — same flow as any other secret.
+  #
+  # If the user already lists `anthropic_api_key` in `secret_names`, the
+  # toset() de-duplication keeps the for_each happy.
+  effective_secret_names = toset(concat(
+    var.secret_names,
+    var.ai_models_enabled ? ["anthropic_api_key"] : [],
+  ))
 }
 
 resource "aws_ssm_parameter" "secret" {
-  for_each = toset(var.secret_names)
+  for_each = toset(local.effective_secret_names)
 
   name        = "${local.secret_path_prefix}/${each.value}"
   description = "Per-app secret '${each.value}' for ${var.app_name}. Placeholder created by Terraform; real value set out-of-band by operator."
@@ -43,7 +57,7 @@ resource "aws_ssm_parameter" "secret" {
 }
 
 data "aws_ssm_parameter" "secret" {
-  for_each = toset(var.secret_names)
+  for_each = toset(local.effective_secret_names)
 
   name            = aws_ssm_parameter.secret[each.value].name
   with_decryption = true
@@ -51,7 +65,7 @@ data "aws_ssm_parameter" "secret" {
 
 locals {
   secret_env_vars = {
-    for name in var.secret_names :
+    for name in local.effective_secret_names :
     upper(name) => data.aws_ssm_parameter.secret[name].value
   }
 }
