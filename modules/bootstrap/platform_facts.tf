@@ -72,9 +72,9 @@ resource "aws_ssm_parameter" "fact_orchestrator_log_group" {
 
 resource "aws_ssm_parameter" "fact_bedrock_model_arns" {
   name        = "${local.facts_root}/bedrock_model_arns"
-  description = "Comma-separated Bedrock foundation-model ARNs that apps with `ai_models_enabled = true` may invoke."
+  description = "Comma-separated Bedrock ARNs (foundation-model with region wildcard + regional inference-profile) that apps with `ai_models_enabled = true` may invoke. See `local.bedrock_model_arns` in main.tf."
   type        = "StringList"
-  value       = join(",", [for m in var.bedrock_models : "arn:aws:bedrock:${data.aws_region.current.region}::foundation-model/${m}"])
+  value       = join(",", local.bedrock_model_arns)
   tags        = local.common_tags
 }
 

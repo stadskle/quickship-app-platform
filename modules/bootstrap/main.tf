@@ -25,6 +25,18 @@ locals {
       )
     )
   )
+
+  # Single source of truth for what gets granted InvokeModel on. Both the
+  # SSM-published fact (read by per-app quickship modules to scope Lambda
+  # IAM) and the module output (passed to developer modules for local-dev
+  # IAM) consume this list. Keep them aligned by computing once here.
+  bedrock_model_arns = concat(
+    [for m in var.bedrock_models : "arn:aws:bedrock:*::foundation-model/${m}"],
+    local.bedrock_geo_prefix == "" ? [] : [
+      for m in var.bedrock_models :
+      "arn:aws:bedrock:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:inference-profile/${local.bedrock_geo_prefix}.${m}"
+    ],
+  )
 }
 
 # ---------------------------------------------------------------------------
