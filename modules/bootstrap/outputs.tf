@@ -79,9 +79,9 @@ output "neon_pooler_host" {
 }
 
 output "bedrock_model_arns" {
-  description = "Bedrock ARNs to grant InvokeModel on when `ai_models_enabled = true`. Includes BOTH the underlying foundation-model ARN and the regional inference-profile ARN — AWS requires both because invocation actually targets the inference profile (which routes to the foundation model)."
+  description = "Bedrock ARNs to grant InvokeModel on when `ai_models_enabled = true`. Includes the regional inference-profile ARN AND the foundation-model ARN with a region wildcard. The wildcard is required because cross-region inference profiles can route the invocation to the foundation model in any of several regions (e.g. `eu.` profiles route across eu-central-1 / eu-west-1 / eu-west-3 / eu-north-1, varying per model and as AWS adds routing regions). Foundation-model ARNs have no account ID and are AWS-managed, so the regional wildcard isn't a real isolation concern."
   value = concat(
-    [for m in var.bedrock_models : "arn:aws:bedrock:${data.aws_region.current.region}::foundation-model/${m}"],
+    [for m in var.bedrock_models : "arn:aws:bedrock:*::foundation-model/${m}"],
     local.bedrock_geo_prefix == "" ? [] : [
       for m in var.bedrock_models :
       "arn:aws:bedrock:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:inference-profile/${local.bedrock_geo_prefix}.${m}"
