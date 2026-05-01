@@ -338,50 +338,48 @@ resource "aws_iam_policy" "app_access" {
           }
         },
       ],
-      length(var.bedrock_model_arns) > 0 ? [
-        {
-          # Bedrock foundation models are AWS-managed and untaggable. Granted
-          # directly to the platform's published models. Minor over-grant —
-          # all developers can invoke regardless of which apps they're on.
-          # Mitigation: Nova Lite is cheap; budget alerts in bootstrap catch
-          # runaway costs.
-          #
-          # Both the legacy InvokeModel API and the newer Converse API are
-          # granted, plus their streaming variants. `app.lib.ai` uses
-          # Converse; some apps may call InvokeModel directly.
-          Sid    = "Bedrock"
-          Effect = "Allow"
-          Action = [
-            "bedrock:InvokeModel",
-            "bedrock:InvokeModelWithResponseStream",
-            "bedrock:Converse",
-            "bedrock:ConverseStream",
-          ]
-          Resource = var.bedrock_model_arns
-        },
-        {
-          # Read-only Bedrock + Service Quotas access so a developer (or
-          # Claude on their behalf) can self-diagnose throttling/availability
-          # without console access. Without these, ThrottlingException
-          # surfaces with no way to check whether it's the model quota, the
-          # inference-profile quota, or a missing model-access grant.
-          Sid    = "BedrockReadDiagnostics"
-          Effect = "Allow"
-          Action = [
-            "bedrock:ListFoundationModels",
-            "bedrock:GetFoundationModel",
-            "bedrock:GetFoundationModelAvailability",
-            "bedrock:ListInferenceProfiles",
-            "bedrock:GetInferenceProfile",
-            "bedrock:ListModelInvocationJobs",
-            "bedrock:GetModelInvocationLoggingConfiguration",
-            "service-quotas:ListServiceQuotas",
-            "service-quotas:GetServiceQuota",
-            "service-quotas:ListAWSDefaultServiceQuotas",
-          ]
-          Resource = "*"
-        },
-      ] : []
+      length(var.bedrock_model_arns) > 0 ? [{
+        # Bedrock foundation models are AWS-managed and untaggable. Granted
+        # directly to the platform's published models. Minor over-grant —
+        # all developers can invoke regardless of which apps they're on.
+        # Mitigation: Nova Lite is cheap; budget alerts in bootstrap catch
+        # runaway costs.
+        #
+        # Both the legacy InvokeModel API and the newer Converse API are
+        # granted, plus their streaming variants. `app.lib.ai` uses
+        # Converse; some apps may call InvokeModel directly.
+        Sid    = "Bedrock"
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+          "bedrock:Converse",
+          "bedrock:ConverseStream",
+        ]
+        Resource = var.bedrock_model_arns
+      }] : [],
+      length(var.bedrock_model_arns) > 0 ? [{
+        # Read-only Bedrock + Service Quotas access so a developer (or
+        # Claude on their behalf) can self-diagnose throttling/availability
+        # without console access. Without these, ThrottlingException
+        # surfaces with no way to check whether it's the model quota, the
+        # inference-profile quota, or a missing model-access grant.
+        Sid    = "BedrockReadDiagnostics"
+        Effect = "Allow"
+        Action = [
+          "bedrock:ListFoundationModels",
+          "bedrock:GetFoundationModel",
+          "bedrock:GetFoundationModelAvailability",
+          "bedrock:ListInferenceProfiles",
+          "bedrock:GetInferenceProfile",
+          "bedrock:ListModelInvocationJobs",
+          "bedrock:GetModelInvocationLoggingConfiguration",
+          "service-quotas:ListServiceQuotas",
+          "service-quotas:GetServiceQuota",
+          "service-quotas:ListAWSDefaultServiceQuotas",
+        ]
+        Resource = ["*"]
+      }] : [],
     )
   })
 }
