@@ -344,9 +344,18 @@ resource "aws_iam_policy" "app_access" {
         # all developers can invoke regardless of which apps they're on.
         # Mitigation: Nova Lite is cheap; budget alerts in bootstrap catch
         # runaway costs.
-        Sid      = "Bedrock"
-        Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel"]
+        #
+        # Both the legacy InvokeModel API and the newer Converse API are
+        # granted, plus their streaming variants. `app.lib.ai` uses
+        # Converse; some apps may call InvokeModel directly.
+        Sid    = "Bedrock"
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+          "bedrock:Converse",
+          "bedrock:ConverseStream",
+        ]
         Resource = var.bedrock_model_arns
       }] : []
     )
