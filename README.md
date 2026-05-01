@@ -54,6 +54,20 @@ Apps share a single AWS account. Boundaries are enforced by IAM policies (per-re
 - **Single region, no multi-region failover.** Region outage = platform outage.
 - **No application-level audit logging, no compliance certifications, no third-party security audit.**
 
+### Accepted compromises (revisit later)
+
+Smaller concessions made for simplicity or to work around AWS-API quirks. Each is technical debt we know about but haven't paid down yet. Listed here so we don't forget.
+
+- **CodeBuild log groups granted to devs with name-prefix scope, not tags.** CodeBuild auto-creates its log groups untagged on first build, so the dev policy's tag-based `CloudWatchLogs` statement can't match them. Worked around by granting `logs:Get*/Filter*/...LiveTail` on `arn:aws:logs:*:*:log-group:/aws/codebuild/<name_prefix>-*` unconditionally. Effect: dev `alice` can tail dev `bob`'s app's CodeBuild logs. Acceptable because build logs are build output (no runtime user data); fix path is to TF-manage the log groups so they get tags, and re-tighten the policy.
+- **Pipeline service role granted whole-bucket access on the platform artifact bucket.** CodePipeline auto-generates its own paths (`<truncated-pipeline-name>/...`) under the shared artifact bucket — we don't control the prefix. Acceptable because CodePipeline isolates per-pipeline paths internally; theoretical risk is a compromised pipeline reading another pipeline's artifacts in the same bucket.
+- **CloudWatch Logs Insights granted unconditionally.** `logs:StartQuery` requires `Resource: "*"` and tag conditions don't reliably scope across the log-group selection step. The downstream `GetLogEvents` calls *are* tag-scoped, so actual log content access is still bounded.
+- **`logs:DescribeLogGroups` granted account-wide.** Required for log-group enumeration; tag conditions don't apply. Devs see log-group *names* across the account, but can't read log content unless the group is theirs.
+- **Bedrock model invocation granted unconditionally.** Foundation-model ARNs are AWS-managed and untaggable. All devs can invoke any platform-published model regardless of which apps they're on. Mitigation: only Nova Lite is published (cheap), and bootstrap sets monthly budget alerts to catch runaway spend.
+- **Pipeline triggers orchestrator on every push.** A push to an app repo causes the pipeline to call the orchestrator (admin-ish PowerUser) with the repo's `infra/` zip. Effect: a compromised repo can change AWS infra; the trust surface for "infra changes" is now `git push` access, same as `terraform apply` would be. Accepted to give devs the "git push does everything" UX. Mitigation path is a CloudFront-Function or Lambda@Edge layer that validates the zip before the orchestrator accepts it; not built.
+- **AWS-managed CloudFront policy IDs hardcoded.** `aws_cloudfront_cache_policy` / `_origin_request_policy` data sources return null at plan time and produce "inconsistent final plan" errors during apply (provider bug). Hardcoded the constants instead. Brittle if AWS ever rotates these IDs (they shouldn't).
+- **Yoyo migrations run on Lambda cold start.** Lambda's default 10-second timeout means any migration longer than that aborts mid-flight; Yoyo's advisory lock holds until the Postgres session dies. Accepted because migrations are meant to be fast (CLAUDE.md "Safe migration recipes"); a bigger refactor would split migrations into a separate one-off CodeBuild job.
+- **Cloudflare origin-secret rotation is manual.** `random_password.origin_secret` is regenerated only when explicitly tainted, then both the WAF rule and Cloudflare Transform Rule update on next apply. No automatic rotation cadence.
+
 ### Use this for
 
 - Internal tools, admin dashboards, ops pages.
