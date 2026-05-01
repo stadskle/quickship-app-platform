@@ -71,3 +71,21 @@ data "aws_ssm_parameters_by_path" "platform_git_connections" {
   count = var.pipeline_enabled ? 1 : 0
   path  = "/${var.name_prefix}/_platform/git_connection_arn"
 }
+
+# Orchestrator handles. The pipeline's CodeBuild calls into the orchestrator
+# at the start of every build to run terraform — this gives "git push does
+# everything" UX, and incidentally catches any console-edit drift.
+data "aws_ssm_parameter" "platform_orchestrator_arn" {
+  count = var.pipeline_enabled ? 1 : 0
+  name  = "/${var.name_prefix}/_platform/orchestrator_arn"
+}
+
+data "aws_ssm_parameter" "platform_orchestrator_project" {
+  count = var.pipeline_enabled ? 1 : 0
+  name  = "/${var.name_prefix}/_platform/orchestrator_project"
+}
+
+data "aws_ssm_parameter" "platform_orchestrator_input_bucket" {
+  count = var.pipeline_enabled ? 1 : 0
+  name  = "/${var.name_prefix}/_platform/orchestrator_input_bucket"
+}

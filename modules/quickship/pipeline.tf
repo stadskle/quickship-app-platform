@@ -86,6 +86,35 @@ resource "aws_iam_role_policy" "codebuild" {
         ]
         Resource = module.lambda.lambda_function_arn
       },
+      # Read the app's REPO_URL (= what app_owners stored on first apply) and
+      # the orchestrator handles, so the buildspec can stage and trigger an
+      # apply on every push.
+      {
+        Sid    = "ReadOrchestratorHandles"
+        Effect = "Allow"
+        Action = ["ssm:GetParameter"]
+        Resource = [
+          "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.name_prefix}/_platform/orchestrator_*",
+          "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.name_prefix}/_platform/app_owners/${var.app_name}",
+        ]
+      },
+      # Stage the source zip into the orchestrator's input bucket.
+      {
+        Sid    = "WriteOrchestratorInput"
+        Effect = "Allow"
+        Action = ["s3:PutObject"]
+        Resource = "arn:aws:s3:::${data.aws_ssm_parameter.platform_orchestrator_input_bucket[0].value}/*"
+      },
+      # Trigger the orchestrator and poll until terminal.
+      {
+        Sid    = "InvokeOrchestrator"
+        Effect = "Allow"
+        Action = [
+          "codebuild:StartBuild",
+          "codebuild:BatchGetBuilds",
+        ]
+        Resource = data.aws_ssm_parameter.platform_orchestrator_arn[0].value
+      },
     ]
   })
 }
@@ -117,6 +146,25 @@ resource "aws_codebuild_project" "build" {
     environment_variable {
       name  = "PYTHON_RUNTIME"
       value = var.runtime
+    }
+
+    # Orchestrator handles, used by buildspec's pre_build phase to run
+    # terraform on every push (idempotent — fast no-op if no infra change).
+    environment_variable {
+      name  = "ORCHESTRATOR_PROJECT"
+      value = data.aws_ssm_parameter.platform_orchestrator_project[0].value
+    }
+    environment_variable {
+      name  = "ORCHESTRATOR_INPUT_BUCKET"
+      value = data.aws_ssm_parameter.platform_orchestrator_input_bucket[0].value
+    }
+    environment_variable {
+      name  = "PLATFORM_PREFIX"
+      value = var.name_prefix
+    }
+    environment_variable {
+      name  = "APP_NAME"
+      value = var.app_name
     }
   }
 
