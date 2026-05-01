@@ -143,8 +143,16 @@ resource "aws_iam_user_policy" "orchestrator_invoke" {
 # Single managed policy granting per-app debug + local-dev access. Scoped
 # via tag-based access control: every per-app resource is tagged
 # `quickship:dev:<name> = "1"` for each developer in that app's
-# `developers` list. The policy condition allows the action only when
-# the resource's `quickship:dev:${this-user-name}` tag exists.
+# `developers` list. The policy condition checks the dev's specific tag
+# (e.g., `quickship:dev:ketil`) on every action.
+#
+# The dev's name is hard-coded into THIS dev's policy at terraform-time
+# (`${var.name}` → "ketil"). We do NOT use the IAM policy variable
+# `${aws:PrincipalTag/quickship-username}` here: AWS only documents
+# policy-variable interpolation in condition VALUES, not condition KEYS,
+# and empirically the variable-in-key pattern was being matched as a
+# literal string at evaluation time, denying every action. Hard-coding
+# is fine because each developer has their own copy of this policy.
 #
 # Net effect: ONE managed policy per developer, scoping to N apps via
 # resource-tag matching. Replaces the previous "one managed policy per
@@ -152,7 +160,8 @@ resource "aws_iam_user_policy" "orchestrator_invoke" {
 # at 10 apps. Tags-per-resource cap (50) effectively means up to 50
 # developers per app.
 #
-# Logs Insights and Bedrock are exceptions — see comments inline.
+# Logs Insights, CodeBuild logs, and Bedrock are exceptions — see
+# comments inline.
 resource "aws_iam_policy" "app_access" {
   name        = "${local.resource_name}-app-access"
   description = "Per-app debug + local-dev access for ${var.name}, scoped via resource tags."
@@ -175,7 +184,7 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
           Condition = {
             StringEquals = {
-              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+              "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
         },
@@ -192,7 +201,7 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
           Condition = {
             StringEquals = {
-              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+              "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
         },
@@ -221,6 +230,28 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
         },
         {
+          # CodeBuild log groups (`/aws/codebuild/<name_prefix>-*`) are auto-
+          # created by CodeBuild on first run, untagged. The tag-based
+          # CloudWatchLogs statement above can't match them, so we grant
+          # read access here name-prefix-scoped instead. Lower precision
+          # than the tag scheme but acceptable: CodeBuild logs are build
+          # output (no runtime user data), and the prefix already isolates
+          # other accounts/customers if any.
+          Sid    = "CodeBuildLogsByName"
+          Effect = "Allow"
+          Action = [
+            "logs:DescribeLogStreams",
+            "logs:GetLogEvents",
+            "logs:FilterLogEvents",
+            "logs:StartLiveTail",
+            "logs:StopLiveTail",
+          ]
+          Resource = [
+            "arn:aws:logs:*:*:log-group:/aws/codebuild/${var.name_prefix}-*",
+            "arn:aws:logs:*:*:log-group:/aws/codebuild/${var.name_prefix}-*:*",
+          ]
+        },
+        {
           Sid    = "CodeBuild"
           Effect = "Allow"
           Action = [
@@ -233,7 +264,7 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
           Condition = {
             StringEquals = {
-              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+              "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
         },
@@ -249,7 +280,7 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
           Condition = {
             StringEquals = {
-              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+              "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
         },
@@ -265,7 +296,7 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
           Condition = {
             StringEquals = {
-              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+              "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
         },
@@ -286,7 +317,7 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
           Condition = {
             StringEquals = {
-              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+              "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
         },
@@ -302,7 +333,7 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
           Condition = {
             StringEquals = {
-              "aws:ResourceTag/quickship:dev:$${aws:PrincipalTag/quickship-username}" = "1"
+              "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
         },
