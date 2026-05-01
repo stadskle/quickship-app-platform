@@ -179,6 +179,24 @@ Console → Developer Tools → Settings → **Connections** → click the `<pre
 
 Connection ARN is stable; re-authorising never changes it.
 
+### 6. Grant Bedrock model access + bump inference-profile quotas
+
+Even with the IAM grants this module emits, two AWS gates remain that aren't in Terraform's surface area. Without these, the first call from any app's `app.lib.ai` either silently 403s or throttles immediately.
+
+**Model access** (one-off per account, per region):
+
+Console → Bedrock → **Model access** (left nav) → **Manage model access** → check every model in `bedrock_models` (default: Amazon Nova Lite) → **Save changes**. Status goes `Available to request` → `Access granted` (usually instant for Amazon-owned models, 24h+ for Anthropic).
+
+Until you do this, IAM-permitted requests come back with off-message validation errors, not "access denied" — confusing.
+
+**Inference-profile token quota** (cross-region inference profiles ship with low defaults — sometimes effectively zero):
+
+Console → Service Quotas → **Amazon Bedrock** (in the deployment region) → search `Cross-region` and the model name → look for `Cross-region InvokeModel tokens per day for <model>`. If the value is 0, 1000, or anything that a few summary calls would exhaust, click **Request quota increase** → enter a sensible value (10,000–100,000 tokens/day is typical for an internal-tools account; AWS auto-approves modest jumps in minutes).
+
+Symptom you'll see if this is wrong: `ThrottlingException ... Too many tokens per day` on the first or second call, even though no real volume has hit the model.
+
+The bare foundation-model has its own quotas too (per-minute, per-day) but defaults are usually sane; the inference-profile quota is the trap.
+
 ---
 
 ## Notes
