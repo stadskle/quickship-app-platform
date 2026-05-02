@@ -140,6 +140,23 @@ variable "pipeline_orchestrator_trigger" {
   default     = true
 }
 
+variable "cron_schedules" {
+  type = list(object({
+    name       = string
+    expression = string
+  }))
+  description = "EventBridge Scheduler entries that invoke the Lambda with payload {\"_quickship_cron\":\"<name>\"}. App code dispatches on that field via backend/app/cron.py. Expression is AWS schedule syntax: `cron(0 9 * * ? *)` (UTC) or `rate(1 hour)`. Function in app/cron.py must match the `name` exactly (lowercase letters/digits/underscores)."
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for s in var.cron_schedules :
+      can(regex("^[a-z][a-z0-9_]*$", s.name))
+    ])
+    error_message = "cron_schedules: each name must be lowercase letters/digits/underscores, starting with a letter."
+  }
+}
+
 variable "secret_names" {
   type        = list(string)
   description = "Names of per-app secrets the app will read at runtime. Each becomes an SSM SecureString placeholder at /<prefix>/apps/<app>/<name>, and is injected into Lambda as env var <NAME_UPPERCASE>. Operators set the real value out-of-band (CLI/console) and re-apply to push it to Lambda. Names must be lowercase letters/digits/underscores."

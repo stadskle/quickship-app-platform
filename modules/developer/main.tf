@@ -252,6 +252,35 @@ resource "aws_iam_policy" "app_access" {
           ]
         },
         {
+          # EventBridge Scheduler GetSchedule / GetScheduleGroup — name-
+          # prefix-scoped because `aws_scheduler_schedule` doesn't support
+          # tagging in the AWS provider. Schedules are named
+          # `<name_prefix>-<app>-<cron-name>`. Devs see schedule details
+          # only for prefix-matched schedules; manual test-fire uses the
+          # existing tag-conditioned `lambda:InvokeFunction` with the
+          # `_quickship_cron` payload.
+          Sid    = "EventBridgeSchedulerGetByName"
+          Effect = "Allow"
+          Action = [
+            "scheduler:GetSchedule",
+            "scheduler:GetScheduleGroup",
+          ]
+          Resource = [
+            "arn:aws:scheduler:*:*:schedule/default/${var.name_prefix}-*",
+            "arn:aws:scheduler:*:*:schedule-group/default",
+          ]
+        },
+        {
+          # ListSchedules / ListScheduleGroups don't accept resource-scoped
+          # grants. Account-wide enumeration; same shape as DescribeLogGroups
+          # / dynamodb:ListTables. Devs see schedule names across the
+          # account but cannot read details unless prefix-matched.
+          Sid      = "EventBridgeSchedulerListAccountWide"
+          Effect   = "Allow"
+          Action   = ["scheduler:ListSchedules", "scheduler:ListScheduleGroups"]
+          Resource = "*"
+        },
+        {
           Sid    = "CodeBuild"
           Effect = "Allow"
           Action = [
