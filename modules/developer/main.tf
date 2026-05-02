@@ -288,6 +288,7 @@ resource "aws_iam_policy" "app_access" {
             "codebuild:RetryBuild",
             "codebuild:StopBuild",
             "codebuild:BatchGetBuilds",
+            "codebuild:BatchGetProjects",
             "codebuild:ListBuildsForProject",
           ]
           Resource = "*"
@@ -296,6 +297,15 @@ resource "aws_iam_policy" "app_access" {
               "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
+        },
+        {
+          # ListProjects is account-wide — same shape as DescribeLogGroups,
+          # ListTables, ListSchedules. Names visible across the account;
+          # project metadata via BatchGetProjects remains tag-bound.
+          Sid      = "CodeBuildListAccountWide"
+          Effect   = "Allow"
+          Action   = ["codebuild:ListProjects"]
+          Resource = "*"
         },
         {
           Sid    = "CodePipeline"
