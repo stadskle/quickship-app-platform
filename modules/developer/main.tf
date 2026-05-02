@@ -322,6 +322,16 @@ resource "aws_iam_policy" "app_access" {
           }
         },
         {
+          # Account-wide list — table enumeration with no resource scope.
+          # Tag conditions don't apply to ListTables. Devs see table NAMES
+          # across the account; actual table content is still bounded by
+          # the tag-scoped DynamoDB statement above.
+          Sid      = "DynamoDBList"
+          Effect   = "Allow"
+          Action   = ["dynamodb:ListTables"]
+          Resource = "*"
+        },
+        {
           Sid    = "SSMSecrets"
           Effect = "Allow"
           Action = [
