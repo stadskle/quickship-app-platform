@@ -130,8 +130,14 @@ variable "git_repo" {
 
 variable "git_branch" {
   type        = string
-  description = "Branch that triggers builds. Default `main`. Override only if your repo's default branch is `master` or you ship from a different long-lived branch."
+  description = "Branch that triggers builds. Default `main`. Override only if your repo's default branch is `master` or you ship from a different long-lived branch (e.g., a non-prod env tracking `test`)."
   default     = "main"
+}
+
+variable "pipeline_orchestrator_trigger" {
+  type        = bool
+  description = "When true (default), the pipeline triggers the platform orchestrator to run `terraform apply` before updating Lambda code on every push — so any change in `infra/` propagates without a separate verb. When false, the pipeline ONLY runs `aws lambda update-function-code` (no orchestrator hit). Set false for non-primary environments (test/staging) where infra is owned by the prod pipeline; otherwise the test branch's `terraform.tfvars` would race the prod branch's against shared tfstate."
+  default     = true
 }
 
 variable "secret_names" {

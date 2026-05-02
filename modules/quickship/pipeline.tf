@@ -171,6 +171,14 @@ resource "aws_codebuild_project" "build" {
       name  = "APP_NAME"
       value = var.app_name
     }
+
+    # Tells buildspec.yml whether to trigger the orchestrator before
+    # deploying Lambda code. False (= "true" string here means SKIP) is
+    # the test-env path: code-only deploys, infra owned by the prod env.
+    environment_variable {
+      name  = "SKIP_ORCHESTRATOR_TRIGGER"
+      value = var.pipeline_orchestrator_trigger ? "false" : "true"
+    }
   }
 
   source {
