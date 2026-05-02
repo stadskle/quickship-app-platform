@@ -128,6 +128,7 @@ resource "aws_iam_role_policy" "orchestrator_iam" {
         "iam:AttachRolePolicy",
         "iam:DetachRolePolicy",
         "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
         "iam:CreatePolicy",
         "iam:DeletePolicy",
         "iam:GetPolicy",

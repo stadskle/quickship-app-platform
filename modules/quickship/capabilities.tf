@@ -32,7 +32,13 @@ resource "aws_s3_bucket" "storage" {
   count = var.storage_enabled ? 1 : 0
 
   bucket = "${local.resource_name}-storage-${data.aws_caller_identity.current.account_id}"
-  tags   = local.tags
+  # Allow `terraform destroy` to delete the bucket even when it has objects.
+  # Without this, BucketNotEmpty blocks destroy. Trade-off: makes accidental
+  # destroys data-losing — that's fine for solo-dev quickship apps where the
+  # explicit verb (`./scripts/destroy.sh`) requires typed-name confirmation
+  # and the platform's stance is "capability disable = data loss".
+  force_destroy = true
+  tags          = local.tags
 }
 
 resource "aws_s3_bucket_public_access_block" "storage" {
@@ -94,7 +100,8 @@ resource "aws_iam_role_policy" "storage" {
 resource "aws_s3_bucket" "storage_localdev" {
   count = var.storage_enabled ? 1 : 0
 
-  bucket = "${local.resource_name}-storage-${data.aws_caller_identity.current.account_id}-localdev"
+  bucket        = "${local.resource_name}-storage-${data.aws_caller_identity.current.account_id}-localdev"
+  force_destroy = true
   tags = merge(local.tags, {
     "quickship:env" = "localdev"
   })
