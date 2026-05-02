@@ -100,7 +100,11 @@ resource "aws_iam_role_policy" "storage" {
 resource "aws_s3_bucket" "storage_localdev" {
   count = var.storage_enabled ? 1 : 0
 
-  bucket        = "${local.resource_name}-storage-${data.aws_caller_identity.current.account_id}-localdev"
+  # Suffix is `-ld` (not `-localdev`) to keep total bucket name ≤ 63 chars
+  # even when both name_prefix, app_name, and a -test variant are involved
+  # (S3's hard limit). The `quickship:env = localdev` tag is the canonical
+  # marker; the suffix is just for global-name disambiguation.
+  bucket        = "${local.resource_name}-storage-${data.aws_caller_identity.current.account_id}-ld"
   force_destroy = true
   tags = merge(local.tags, {
     "quickship:env" = "localdev"
