@@ -371,12 +371,13 @@ resource "aws_iam_policy" "app_access" {
           Resource = "*"
         },
         {
+          # Tag-conditioned access to individual parameters. Get/PutParameter
+          # check the parameter's tags directly.
           Sid    = "SSMSecrets"
           Effect = "Allow"
           Action = [
             "ssm:GetParameter",
             "ssm:GetParameters",
-            "ssm:GetParametersByPath",
             "ssm:PutParameter",
           ]
           Resource = "*"
@@ -385,6 +386,23 @@ resource "aws_iam_policy" "app_access" {
               "aws:ResourceTag/quickship:dev:${var.name}" = "1"
             }
           }
+        },
+        {
+          # GetParametersByPath / DescribeParameters operate on a path
+          # resource, not individual parameters — tag conditions can't be
+          # evaluated against a path (paths aren't tagged, only parameters
+          # are). Scope by name prefix instead, same shape as
+          # CodeBuildLogsByName / EventBridgeSchedulerGetByName. Allows
+          # listing parameters under any per-app namespace within the
+          # platform's prefix; per-parameter content reads still flow
+          # through the tag-conditioned SSMSecrets statement above.
+          Sid    = "SSMPathListByName"
+          Effect = "Allow"
+          Action = [
+            "ssm:GetParametersByPath",
+            "ssm:DescribeParameters",
+          ]
+          Resource = "arn:aws:ssm:*:*:parameter/${var.name_prefix}/apps/*"
         },
       ],
       length(var.bedrock_model_arns) > 0 ? [{
