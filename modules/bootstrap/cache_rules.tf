@@ -35,5 +35,23 @@ resource "cloudflare_ruleset" "static_asset_cache" {
         }
       }
     },
+    {
+      # Force-uncache the SPA app shell. Cloudflare's default for HTML is
+      # not to cache, but a tweaked zone setting or a stray origin
+      # Cache-Control header could change that — and a cached index.html
+      # serving stale hash references after a deploy is a hard-to-diagnose
+      # "the site looks broken on my browser" footgun. Explicit rule
+      # guarantees index.html is always fresh regardless of zone defaults.
+      #
+      # `/` covers SPA root (FastAPI serves index.html there). `*.html`
+      # covers any direct .html requests (rare for SPAs but harmless).
+      description = "Never cache the SPA app shell"
+      expression  = "(http.request.uri.path eq \"/\") or (ends_with(http.request.uri.path, \".html\"))"
+      action      = "set_cache_settings"
+      enabled     = true
+      action_parameters = {
+        cache = false
+      }
+    },
   ]
 }
